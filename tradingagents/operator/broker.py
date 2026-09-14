@@ -27,6 +27,8 @@ class BrokerAdapter(Protocol):
 
     def submit(self, intent: OrderIntent) -> OrderReceipt: ...
 
+    def lookup(self, client_order_id: str) -> OrderReceipt | None: ...
+
 
 class DryRunBroker:
     """In-memory execution adapter for integration tests and unattended dry runs."""
@@ -54,3 +56,6 @@ class DryRunBroker:
         )
         self._orders[intent.client_order_id] = receipt
         return receipt
+
+    def lookup(self, client_order_id: str) -> OrderReceipt | None:
+        return self._orders.get(client_order_id)
