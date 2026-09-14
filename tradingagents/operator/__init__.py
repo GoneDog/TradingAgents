@@ -9,15 +9,18 @@ from .broker import BrokerAdapter, DryRunBroker
 from .ledger import Ledger
 from .models import Decision, OrderIntent, RiskLimits
 from .oauth_runtime import OAuthRuntimeConfig, apply_oauth_only_policy, reject_metered_provider_credentials
+from .planner import DecisionPlanner, PositionTargets
 from .risk import RiskGate, RiskRejection
 
 __all__ = [
     "BrokerAdapter",
     "Decision",
+    "DecisionPlanner",
     "DryRunBroker",
     "Ledger",
     "OAuthRuntimeConfig",
     "OrderIntent",
+    "PositionTargets",
     "RiskGate",
     "RiskLimits",
     "RiskRejection",
