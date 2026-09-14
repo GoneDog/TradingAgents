@@ -31,6 +31,22 @@ def test_operator_deduplicates_order_ids(tmp_path):
     assert second is None
 
 
+def test_operator_retries_pending_intent_only_when_broker_has_no_order(tmp_path):
+    broker = DryRunBroker(cash=Decimal("1000"))
+    ledger = Ledger(tmp_path / "ledger.db")
+    operator = Operator(broker, RiskGate(limits()), ledger)
+    intent = OrderIntent("AAPL", "buy", Decimal("1"), Decimal("50"), "recover-1")
+
+    # Simulate dying after the intent was persisted but before broker submission.
+    ledger.record_pending(intent)
+    receipt = operator.execute(intent)
+    assert receipt is not None
+    assert receipt.client_order_id == "recover-1"
+
+    # A subsequent run reconciles the broker copy and does not submit again.
+    assert operator.execute(intent) is None
+
+
 def test_risk_gate_rejects_oversized_order():
     gate = RiskGate(limits())
     intent = OrderIntent("AAPL", "buy", Decimal("3"), Decimal("50"), "abc-2")
