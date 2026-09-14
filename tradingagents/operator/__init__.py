@@ -5,6 +5,7 @@ may propose trades; deterministic policy code decides whether a proposal is
 allowed to reach an execution adapter.
 """
 
+from .alpaca_oauth import AlpacaOAuthBroker
 from .broker import BrokerAdapter, DryRunBroker
 from .ledger import Ledger
 from .models import Decision, OrderIntent, RiskLimits
@@ -13,6 +14,7 @@ from .planner import DecisionPlanner, PositionTargets
 from .risk import RiskGate, RiskRejection
 
 __all__ = [
+    "AlpacaOAuthBroker",
     "BrokerAdapter",
     "Decision",
     "DecisionPlanner",
