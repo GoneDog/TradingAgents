@@ -5,11 +5,13 @@ from tradingagents.operator.models import OrderIntent
 
 
 class FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, status_code=200):
         self.payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self):
-        return None
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
 
     def json(self):
         return self.payload
@@ -19,6 +21,7 @@ class FakeSession:
     def __init__(self):
         self.headers = {}
         self.posts = []
+        self.lookup_payload = None
 
     def get(self, url, timeout, **kwargs):
         if url.endswith("/v2/account"):
@@ -33,6 +36,10 @@ class FakeSession:
         if url.endswith("/v2/orders"):
             assert kwargs["params"]["status"] == "open"
             return FakeResponse([{"id": "open-1"}])
+        if url.endswith("/v2/orders:by_client_order_id"):
+            if self.lookup_payload is None:
+                return FakeResponse({}, status_code=404)
+            return FakeResponse(self.lookup_payload)
         raise AssertionError(url)
 
     def post(self, url, json, timeout):
@@ -78,3 +85,22 @@ def test_submit_uses_client_order_id_for_broker_idempotency():
     assert receipt.broker_order_id == "broker-123"
     assert session.posts[0][1]["client_order_id"] == "ta-stable-id"
     assert session.posts[0][1]["qty"] == "1.25"
+
+
+def test_lookup_reconciles_by_client_order_id():
+    session = FakeSession()
+    session.lookup_payload = {
+        "id": "broker-existing",
+        "client_order_id": "ta-stable-id",
+        "status": "filled",
+    }
+    broker = AlpacaOAuthBroker("oauth-token", session=session)
+    receipt = broker.lookup("ta-stable-id")
+    assert receipt is not None
+    assert receipt.broker_order_id == "broker-existing"
+    assert receipt.status == "filled"
+
+
+def test_lookup_returns_none_for_definitive_not_found():
+    broker = AlpacaOAuthBroker("oauth-token", session=FakeSession())
+    assert broker.lookup("missing-id") is None
