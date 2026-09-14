@@ -49,6 +49,14 @@ class AlpacaOAuthBroker:
         response.raise_for_status()
         return response.json()
 
+    @staticmethod
+    def _receipt(order: dict, fallback_client_order_id: str = "") -> OrderReceipt:
+        return OrderReceipt(
+            client_order_id=str(order.get("client_order_id", fallback_client_order_id)),
+            broker_order_id=str(order["id"]),
+            status=str(order.get("status", "accepted")),
+        )
+
     def snapshot(self) -> AccountSnapshot:
         account = self._get("/v2/account")
         positions = self._get("/v2/positions")
@@ -72,6 +80,17 @@ class AlpacaOAuthBroker:
             symbol_notionals=symbol_notionals,
         )
 
+    def lookup(self, client_order_id: str) -> OrderReceipt | None:
+        response = self.session.get(
+            self.base_url + "/v2/orders:by_client_order_id",
+            params={"client_order_id": client_order_id},
+            timeout=self.timeout,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return self._receipt(response.json(), client_order_id)
+
     def submit(self, intent: OrderIntent) -> OrderReceipt:
         payload = {
             "symbol": intent.symbol,
@@ -87,9 +106,4 @@ class AlpacaOAuthBroker:
             timeout=self.timeout,
         )
         response.raise_for_status()
-        order = response.json()
-        return OrderReceipt(
-            client_order_id=str(order.get("client_order_id", intent.client_order_id)),
-            broker_order_id=str(order["id"]),
-            status=str(order.get("status", "accepted")),
-        )
+        return self._receipt(response.json(), intent.client_order_id)
