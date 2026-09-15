@@ -53,6 +53,17 @@ class TransactionRail(Protocol):
     def submit_trade(self, intent: TradeIntent): ...
 
 
+ALPACA_OAUTH = RailCapabilities(
+    name="alpaca",
+    kind=RailKind.BROKER,
+    read_balances=True,
+    trade=True,
+    transfer=False,
+    unattended=True,
+    per_transaction_user_signature=False,
+    auth_mode="oauth2_bearer",
+)
+
 REVOLUT_BUSINESS_OAUTH = RailCapabilities(
     name="revolut_business",
     kind=RailKind.BANK,
