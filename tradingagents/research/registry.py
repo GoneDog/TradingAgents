@@ -80,6 +80,8 @@ class StrategyRegistry:
         reason: str,
     ) -> None:
         current = self.state(strategy_id)
+        if current == to_state:
+            return
         allowed = {
             PromotionState.CANDIDATE: {PromotionState.REJECTED, PromotionState.PAPER},
             PromotionState.PAPER: {PromotionState.LIVE_CAPPED, PromotionState.REJECTED, PromotionState.RETIRED},
