@@ -84,8 +84,12 @@ def test_oauth_header_and_paper_only():
     assert not session.posts
 
 
-def test_snapshot_reserves_remaining_partial_fills_and_actual_shares():
-    snapshot = AlpacaOAuthBroker("token", session=Session()).snapshot()
+@pytest.mark.parametrize("status", ["partially_filled", "pending_cancel"])
+def test_snapshot_reserves_remaining_partial_fills_and_actual_shares(status):
+    session = Session()
+    for pending in session.orders:
+        pending["status"] = status
+    snapshot = AlpacaOAuthBroker("token", session=session).snapshot()
     assert snapshot.pending_buy_notionals == {"MSFT": D("300")}
     assert snapshot.pending_sell_quantities == {"AAPL": D("4")}
     assert snapshot.symbol_quantities == {"AAPL": D("10")}

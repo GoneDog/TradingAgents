@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal as D
+from threading import Barrier
 
 import pytest
 
@@ -58,12 +59,28 @@ def test_share_based_exit_with_mismatched_mark_and_quote():
         RiskGate(policy).validate(replace(plan, quantity=D("11")), a)
 
 
-def test_pending_sells_and_broker_availability_are_not_double_subtracted():
-    a = account("10", open_orders=1, open_order_ids=frozenset({"old"}), pending_sell_quantities={"AAPL": D("4")}, available_quantities={"AAPL": D("6")})
-    assert a.available_to_sell("AAPL") == 6
-    RiskGate(limits()).validate(intent(side="sell", qty="6"), a)
+@pytest.mark.parametrize("pending,broker_available,expected", [
+    ("4", "6", "6"),       # Already net of the same pending sell: do not subtract twice.
+    ("4", "10", "6"),      # Gross broker availability cannot override our reservation.
+    ("4", "3", "3"),       # A tighter broker restriction still wins.
+    ("10", "0", "0"),      # No available shares means no exit intent.
+    ("3.250001", "6.749999", "6.749999"),
+])
+def test_pending_sells_and_broker_availability_are_not_double_subtracted(pending, broker_available, expected):
+    a = account("10", open_orders=1, open_order_ids=frozenset({"old"}),
+        pending_sell_quantities={"AAPL": D(pending)},
+        available_quantities={"AAPL": D(broker_available)})
+    available = D(expected)
+    assert a.available_to_sell("AAPL") == available
+    plan = DecisionPlanner(limits()).plan(decision=Decision.SELL, symbol="AAPL",
+        reference_price=D("100"), account=a, decision_key="exit", price_as_of=utcnow())
+    if available:
+        assert plan is not None and plan.quantity == available
+        RiskGate(limits()).validate(plan, a)
+    else:
+        assert plan is None
     with pytest.raises(RiskRejection, match="reserved shares"):
-        RiskGate(limits()).validate(intent(side="sell", qty="7"), a)
+        RiskGate(limits()).validate(intent(side="sell", qty=str(available + D("0.000001"))), a)
 
 
 def test_sale_remains_allowed_when_mark_to_market_exceeds_gross_cap():
@@ -227,20 +244,25 @@ def test_broker_order_without_local_intent_is_not_adopted(tmp_path):
         Operator(broker, RiskGate(limits()), Ledger(tmp_path / "new.db")).execute(one)
 
 
-def test_concurrent_workers_share_exposure_lock(tmp_path):
+@pytest.mark.parametrize("workers", [2, 4])
+def test_concurrent_workers_share_exposure_lock(tmp_path, workers):
     path = tmp_path / "state.db"
     broker = DryRunBroker()
-    ledgers = [Ledger(path), Ledger(path)]
-    orders = [intent("one"), intent("two")]
+    ledgers = [Ledger(path) for _ in range(workers)]
+    orders = [intent(f"worker-{index}") for index in range(workers)]
+    ready = Barrier(workers)
     def execute(index):
+        ready.wait(timeout=10)
         try:
             return Operator(broker, RiskGate(limits()), ledgers[index]).execute(orders[index])
         except RiskRejection:
             return None
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(execute, [0, 1]))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(execute, range(workers)))
     assert sum(r is not None for r in results) == 1
     assert len(broker._orders) == 1
+    # The review's four $900 requests must reserve $900, never $3,600.
+    assert broker.snapshot().pending_buy_notionals == {"AAPL": D("900")}
 
 
 def test_concurrent_same_intent_has_one_submission(tmp_path):
@@ -290,6 +312,45 @@ def test_cycle_restart_reuses_decision_without_research_or_repricing(tmp_path):
     assert second.reference_price == D("100")
     assert graph.calls == broker.quote_calls == 1
     assert len(broker._orders) == 1
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_cycle_timeout_restart_uses_saved_intent_without_repricing(tmp_path, monkeypatch, accepted):
+    path = tmp_path / "state.db"
+    broker, graph = QuotedBroker(), Graph()
+    ledger = Ledger(path)
+    submit, attempts = broker.submit, []
+
+    def lose_response(order):
+        attempts.append(order)
+        if accepted:
+            submit(order)
+        raise TimeoutError("response lost")
+
+    monkeypatch.setattr(broker, "submit", lose_response)
+    with pytest.raises(ReconciliationRequired, match="unknown"):
+        UnattendedCycle(broker, ledger, limits(), graph=graph).run_once("AAPL")
+    assert len(attempts) == 1
+    original = attempts[0]
+    assert ledger.get_intent(original.client_order_id) == original
+    assert ledger.get_order(original.client_order_id)["status"] == "unknown"
+
+    broker.price, graph.signal = D("101"), "Sell"
+    recovered = UnattendedCycle(broker, Ledger(path), limits(), graph=graph)
+    if accepted:
+        result = recovered.run_once("aapl")
+        assert not result.submitted
+        assert result.decision == Decision.BUY and result.reference_price == D("100")
+    else:
+        # An absent broker result cannot authorize a retry or a new version.
+        for version in ("v1", "v2"):
+            with pytest.raises(ReconciliationRequired, match="unresolved"):
+                recovered.run_once("AAPL", decision_version=version)
+    assert graph.calls == broker.quote_calls == 1
+    assert attempts == [original]
+    assert ledger.get_intent(original.client_order_id) == original
+    assert ledger.get_order(original.client_order_id)["status"] == ("accepted" if accepted else "unknown")
+    assert len(broker._orders) == int(accepted)
 
 
 @pytest.mark.parametrize("signal", ["Hold", "REVIEW"])
