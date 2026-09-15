@@ -11,6 +11,7 @@ class RailKind(str, Enum):
     BANK = "bank"
     EXCHANGE = "exchange"
     SELF_CUSTODY = "self_custody"
+    DELEGATED_WALLET = "delegated_wallet"
 
 
 @dataclass(frozen=True)
@@ -83,4 +84,15 @@ PHANTOM_CONNECTED = RailCapabilities(
     unattended=False,
     per_transaction_user_signature=True,
     auth_mode="wallet_connect_user_signature",
+)
+
+PRIVY_DELEGATED = RailCapabilities(
+    name="privy_delegated",
+    kind=RailKind.DELEGATED_WALLET,
+    read_balances=True,
+    trade=True,
+    transfer=True,
+    unattended=True,
+    per_transaction_user_signature=False,
+    auth_mode="delegated_server_signer_policy",
 )
