@@ -14,12 +14,12 @@ def test_snapshot_rejects_future_rows():
 
 
 def test_snapshot_fingerprint_is_stable():
-    kwargs = dict(
-        symbol="spy",
-        as_of="2026-01-02",
-        dates=["2026-01-01", "2026-01-02"],
-        closes=[100.0, 101.0],
-    )
+    kwargs = {
+        "symbol": "spy",
+        "as_of": "2026-01-02",
+        "dates": ["2026-01-01", "2026-01-02"],
+        "closes": [100.0, 101.0],
+    }
     a = make_price_snapshot(**kwargs)
     b = make_price_snapshot(**kwargs)
     assert a.symbol == "SPY"

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from hashlib import sha256
-import json
 
 
 class PromotionState(str, Enum):

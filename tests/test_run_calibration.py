@@ -26,7 +26,7 @@ def test_fetch_closes_rejects_rows_at_or_after_cutoff(monkeypatch):
     monkeypatch.setattr("tradingagents.research.run_calibration.yf.Ticker", BadTicker)
     try:
         fetch_closes("SPY", start="2020-01-01", as_of="2020-02-01")
-        assert False, "expected cutoff violation"
+        raise AssertionError("expected cutoff violation")
     except ValueError as exc:
         assert "cutoff" in str(exc)
 
@@ -64,13 +64,13 @@ def test_runner_is_idempotent(monkeypatch, tmp_path: Path):
         test_bars=60,
         monte_carlo_samples=20,
     )
-    kwargs = dict(
-        symbol="SPY",
-        start="2020-01-01",
-        as_of="2023-01-01",
-        registry_path=str(registry_path),
-        configs=(cfg,),
-    )
+    kwargs = {
+        "symbol": "SPY",
+        "start": "2020-01-01",
+        "as_of": "2023-01-01",
+        "registry_path": str(registry_path),
+        "configs": (cfg,),
+    }
     first = run_calibration(**kwargs)
     second = run_calibration(**kwargs)
     assert first[0]["strategy_id"] == second[0]["strategy_id"]

@@ -10,7 +10,6 @@ from pathlib import Path
 
 import requests
 
-
 AUTHORIZE_URL = "https://app.alpaca.markets/oauth/authorize"
 TOKEN_URL = "https://api.alpaca.markets/oauth/token"
 
@@ -22,7 +21,7 @@ class AlpacaOAuthApp:
     redirect_uri: str = "http://127.0.0.1:8765/oauth/callback"
 
     @classmethod
-    def from_env(cls) -> "AlpacaOAuthApp":
+    def from_env(cls) -> AlpacaOAuthApp:
         client_id = os.getenv("ALPACA_OAUTH_CLIENT_ID", "")
         client_secret = os.getenv("ALPACA_OAUTH_CLIENT_SECRET", "")
         redirect_uri = os.getenv(
